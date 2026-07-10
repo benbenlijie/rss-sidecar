@@ -1,5 +1,6 @@
 import aiosqlite
 import time
+from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 
@@ -62,6 +63,7 @@ VALID_STATES = {
 
 
 async def init_db():
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(SCHEMA)
         await db.commit()
