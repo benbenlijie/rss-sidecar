@@ -1,0 +1,15 @@
+# Translation glossary
+# Key = English term (case-insensitive match)
+# Value = preferred translation
+# Leave empty or remove file to disable glossary
+
+harness: 测试框架
+subagent: 子智能体
+subagents: 子智能体
+pipeline: 管道
+fine-tuning: 微调
+inference: 推理
+context window: 上下文窗口
+prompt: 提示词
+token: token
+embedding: 嵌入

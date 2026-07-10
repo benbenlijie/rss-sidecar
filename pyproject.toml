@@ -24,6 +24,7 @@ dependencies = [
     "feedgen>=1.0",
     "structlog>=24.4",
     "aiosqlite>=0.20",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

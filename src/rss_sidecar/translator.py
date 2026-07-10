@@ -1,8 +1,9 @@
 from openai import AsyncOpenAI
 from typing import Optional
 from dataclasses import dataclass
+from pathlib import Path
 import asyncio
-import time
+import json
 import structlog
 
 from .config import settings
@@ -10,15 +11,61 @@ from .config import settings
 logger = structlog.get_logger()
 
 SYSTEM_PROMPT = (
-    "You are a professional translator. "
+    "You are a professional technical translator. "
     "Translate the user's text to {target_lang}. "
-    "Output ONLY the translated text with the SAME paragraph structure. "
-    "Do not merge, split, add, or omit any paragraph. "
-    "Preserve all Markdown formatting. "
-    "Keep proper nouns (GPT-4, Claude, OpenAI) untranslated."
+    "You are translating content from technology blogs, research papers, and news articles.\n\n"
+    "Rules:\n"
+    "- Output ONLY the translated text. No preamble, no explanations.\n"
+    "- Preserve the EXACT paragraph structure: same paragraph count, one-to-one mapping.\n"
+    "- Do NOT merge, split, add, or omit any paragraph.\n"
+    "- Separate paragraphs with a blank line.\n"
+    "- Preserve all Markdown formatting (bold, links, headings, lists, code blocks).\n"
+    "- Keep company names, product names, and model names in original English "
+    "(OpenAI, GPT-4, Claude, Anthropic, Google, Gemini, Meta, LLaMA).\n"
+    "- For technical terms with no standard translation, keep the English original.\n"
+    "- Translate naturally and fluently, not word-by-word.{glossary_section}"
 )
 
 MAX_PARAGRAPHS_PER_CHUNK = 15
+
+_glossary_cache: Optional[dict] = None
+_glossary_mtime: float = 0.0
+
+
+def load_glossary() -> dict[str, str]:
+    global _glossary_cache, _glossary_mtime
+
+    glossary_path = Path("glossary.yaml")
+    if not glossary_path.exists():
+        return {}
+
+    mtime = glossary_path.stat().st_mtime
+    if _glossary_cache is not None and mtime == _glossary_mtime:
+        return _glossary_cache
+
+    try:
+        import yaml
+        data = yaml.safe_load(glossary_path.read_text())
+        if isinstance(data, dict):
+            _glossary_cache = {str(k).lower(): str(v) for k, v in data.items()}
+            _glossary_mtime = mtime
+            logger.info("glossary_loaded", terms=len(_glossary_cache))
+            return _glossary_cache
+    except Exception as e:
+        logger.warning("glossary_load_failed", error=str(e))
+
+    return {}
+
+
+def build_glossary_section() -> str:
+    glossary = load_glossary()
+    if not glossary:
+        return ""
+
+    lines = ["\n\nGlossary (use these translations for the following terms):"]
+    for term, translation in glossary.items():
+        lines.append(f'  "{term}" → "{translation}"')
+    return "\n".join(lines)
 
 
 @dataclass
@@ -63,10 +110,15 @@ def _chunk_paragraphs(text: str, chunk_size: int = MAX_PARAGRAPHS_PER_CHUNK) -> 
 
 
 async def _translate_chunk(client: AsyncOpenAI, model: str, chunk: str, target_lang: str) -> tuple[str, int, int]:
+    system_content = SYSTEM_PROMPT.format(
+        target_lang=target_lang,
+        glossary_section=build_glossary_section(),
+    )
+
     response = await client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT.format(target_lang=target_lang)},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": chunk},
         ],
         temperature=0.3,
