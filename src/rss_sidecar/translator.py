@@ -40,7 +40,13 @@ PRICING = {
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    rates = PRICING.get(model, {"input": 1.0, "output": 2.0})
+    if settings.translation_input_price > 0 or settings.translation_output_price > 0:
+        rates = {
+            "input": settings.translation_input_price,
+            "output": settings.translation_output_price,
+        }
+    else:
+        rates = PRICING.get(model, {"input": 1.0, "output": 2.0})
     return (input_tokens * rates["input"] + output_tokens * rates["output"]) / 1_000_000
 
 

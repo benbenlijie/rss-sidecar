@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
 
+    translation_input_price: float = 0.0
+    translation_output_price: float = 0.0
+
     freshrss_url: str = ""
     freshrss_username: str = ""
     freshrss_api_password: str = ""
