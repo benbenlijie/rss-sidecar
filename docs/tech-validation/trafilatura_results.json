@@ -1,0 +1,57 @@
+[
+  {
+    "label": "python-docs",
+    "status": "ok",
+    "chars": 35639,
+    "paragraphs": 1,
+    "code": true,
+    "tables": false,
+    "links": true,
+    "math": false
+  },
+  {
+    "label": "dataquest",
+    "status": "http_error",
+    "code": 403
+  },
+  {
+    "label": "anthropic",
+    "status": "ok",
+    "chars": 20891,
+    "paragraphs": 1,
+    "code": false,
+    "tables": false,
+    "links": true,
+    "math": false
+  },
+  {
+    "label": "snorkel",
+    "status": "ok",
+    "chars": 10435,
+    "paragraphs": 1,
+    "code": false,
+    "tables": false,
+    "links": false,
+    "math": false
+  },
+  {
+    "label": "kern-it",
+    "status": "ok",
+    "chars": 7352,
+    "paragraphs": 1,
+    "code": false,
+    "tables": false,
+    "links": true,
+    "math": false
+  },
+  {
+    "label": "openai",
+    "status": "http_error",
+    "code": 403
+  },
+  {
+    "label": "medium",
+    "status": "http_error",
+    "code": 403
+  }
+]

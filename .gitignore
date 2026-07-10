@@ -1,0 +1,44 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+graphify-out/
+raw/
+
+# Config with secrets
+.env
+config.yaml
+
+# Docker
+docker-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/

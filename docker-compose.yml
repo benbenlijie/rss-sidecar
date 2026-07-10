@@ -1,0 +1,19 @@
+services:
+  rss-sidecar:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on: []
+
+  # Optional: run alongside FreshRSS
+  # freshrss:
+  #   image: freshrss/freshrss:latest
+  #   ports:
+  #     - "8080:80"
+  #   volumes:
+  #     - ./docker-data/freshrss:/var/www/FreshRSS/data
+  #   restart: unless-stopped

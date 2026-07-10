@@ -1,0 +1,32 @@
+{
+  "input_count": 5,
+  "output_count": 5,
+  "alignment_ok": true,
+  "pairs": [
+    {
+      "id": 1,
+      "original": "**Update, Jan 21, 2026: **We've published a new version of Claude's constitution, which you can find at the button above.",
+      "translated": "**更新，2026年1月21日：**我们发布了新版本的Claude宪法，您可以在上方按钮处找到。"
+    },
+    {
+      "id": 2,
+      "original": "How does a language model decide which questions it will engage with and which it deems inappropriate? Why will it encourage some actions and discourage others? What \"values\" might a language model have?",
+      "translated": "语言模型如何决定它会参与哪些问题、认为哪些问题不合适？它为什么会鼓励某些行为而劝阻另一些行为？语言模型可能拥有什么样的"价值观"？"
+    },
+    {
+      "id": 3,
+      "original": "These are all questions people grapple with. Our recently published research on \"Constitutional AI\" provides one answer by giving language models explicit values determined by a constitution, rather than values determined implicitly via large-scale human feedback. This isn't a perfect approach, but it does make the values of the AI system easier to understand and easier to adjust as needed.",
+      "translated": "这些都是人们反复思考的问题。我们最近发表的关于"宪法AI"的研究提供了一个答案：通过一部宪法来赋予语言模型明确的价值观，而不是通过大规模人类反馈来隐式确定价值观。这并非完美的方法，但它确实使AI系统的价值观更容易理解，也更易于在需要时进行调整。"
+    },
+    {
+      "id": 4,
+      "original": "Since launching Claude, our AI assistant trained with Constitutional AI, we've heard more questions about Constitutional AI and how it contributes to making Claude safer and more helpful. In this post, we explain what constitutional AI is, what the values in Claude's constitution are, and how we chose them.",
+      "translated": "自推出Claude——我们使用宪法AI训练的AI助手——以来，我们听到了更多关于宪法AI的问题，以及它如何帮助让Claude变得更安全、更有用。在这篇文章中，我们将解释什么是宪法AI、Claude宪法中的价值观是什么，以及我们是如何选择它们的。"
+    },
+    {
+      "id": 5,
+      "original": "If you just want to skip to the principles, scroll down to the last section which is entitled \"The Principles in Full.\"",
+      "translated": "如果您只想直接跳到原则部分，请向下滚动到最后一节，标题为"完整原则"。"
+    }
+  ]
+}
