@@ -1,10 +1,13 @@
 import asyncio
+import fcntl
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 import aiosqlite
 import structlog
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse
 
@@ -26,16 +29,59 @@ logger = structlog.get_logger()
 
 app = FastAPI(title="RSS Sidecar", version="0.1.0")
 _freshrss: Optional[FreshRSSClient] = None
+_scheduler: Optional[AsyncIOScheduler] = None
+_lock_file = None
+
+PROCESS_INTERVAL_SECONDS = 300
 
 
 @app.on_event("startup")
 async def startup():
+    global _freshrss, _scheduler, _lock_file
+
     await models.init_db()
-    global _freshrss
+
     if settings.freshrss_enabled:
         _freshrss = FreshRSSClient()
         await _freshrss.login()
-    logger.info("sidecar_started", freshrss=settings.freshrss_enabled)
+
+    try:
+        _lock_file = open("/tmp/rss_sidecar_scheduler.lock", "w")
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        logger.info("scheduler_locked_by_another_worker")
+        return
+
+    _scheduler = AsyncIOScheduler()
+    _scheduler.add_job(
+        scheduled_fetch,
+        IntervalTrigger(seconds=settings.fetch_interval_seconds),
+        id="fetch",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        scheduled_process,
+        IntervalTrigger(seconds=PROCESS_INTERVAL_SECONDS),
+        id="process",
+        replace_existing=True,
+    )
+    _scheduler.start()
+    logger.info(
+        "sidecar_started",
+        freshrss=settings.freshrss_enabled,
+        fetch_interval=settings.fetch_interval_seconds,
+        process_interval=PROCESS_INTERVAL_SECONDS,
+    )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global _scheduler, _lock_file
+    if _scheduler:
+        _scheduler.shutdown(wait=False)
+    if _lock_file:
+        fcntl.flock(_lock_file, fcntl.LOCK_UN)
+        _lock_file.close()
 
 
 @app.get("/health")
@@ -49,6 +95,27 @@ async def health():
         "daily_budget_usd": settings.daily_budget_usd,
         "budget_used_pct": round(daily_cost / settings.daily_budget_usd * 100, 1) if settings.daily_budget_usd else 0,
         "freshrss_connected": _freshrss is not None and _freshrss._auth_token is not None,
+        "scheduler_running": _scheduler is not None and _scheduler.running,
+    }
+
+
+@app.get("/scheduler/status")
+async def scheduler_status():
+    if not _scheduler:
+        return {"running": False, "reason": "locked_or_not_started"}
+
+    jobs = []
+    for job in _scheduler.get_jobs():
+        jobs.append({
+            "id": job.id,
+            "next_run": str(job.next_run_time) if job.next_run_time else None,
+        })
+
+    feeds = await models.get_active_feeds()
+    return {
+        "running": _scheduler.running,
+        "jobs": jobs,
+        "active_feeds": len(feeds),
     }
 
 
@@ -85,7 +152,6 @@ async def discover_freshrss_feeds():
         title = sub.get("title", url)
         if not url:
             continue
-
         feed_id = await _upsert_feed(url, title)
         discovered.append({"id": feed_id, "url": url, "title": title})
 
@@ -99,8 +165,7 @@ async def stable_feed(feed_id: int):
     articles = await _get_published_articles(feed_id)
     if not articles:
         return Response(content="<rss></rss>", media_type="application/rss+xml")
-
-    feed_url = str(settings.host)
+    feed_url = f"http://{settings.host}:{settings.port}"
     feed_title = articles[0].get("feed_title", "RSS Sidecar")
     rss_xml = generate_stable_feed(articles, feed_title, feed_url)
     return Response(content=rss_xml, media_type="application/rss+xml")
@@ -112,8 +177,7 @@ async def bilingual_feed_endpoint(feed_id: int):
     articles = await _get_published_articles(feed_id)
     if not articles:
         return Response(content="<rss></rss>", media_type="application/rss+xml")
-
-    feed_url = str(settings.host)
+    feed_url = f"http://{settings.host}:{settings.port}"
     feed_title = articles[0].get("feed_title", "RSS Sidecar")
     rss_xml = generate_bilingual_feed(articles, feed_title, feed_url)
     return Response(content=rss_xml, media_type="application/rss+xml")
@@ -147,6 +211,37 @@ async def read_article(article_id: int):
 @app.post("/process")
 async def process_pipeline(limit: int = 5):
     """Run one processing cycle: fetch -> extract -> translate -> publish."""
+    return await run_pipeline(limit)
+
+
+async def scheduled_fetch():
+    feeds = await models.get_active_feeds()
+    if not feeds:
+        return
+
+    logger.info("scheduled_fetch_start", feeds=len(feeds))
+    total_new = 0
+
+    for feed in feeds:
+        feed_title, items = await fetch_feed(feed["url"])
+        if not items:
+            continue
+
+        for item in items:
+            await models.create_article(feed["id"], item.url, item.guid, item.title)
+            total_new += 1
+
+        await models.update_feed_fetched(feed["id"])
+
+    if total_new > 0:
+        logger.info("scheduled_fetch_done", feeds=len(feeds), new_articles=total_new)
+
+
+async def scheduled_process():
+    await run_pipeline(limit=5)
+
+
+async def run_pipeline(limit: int = 5) -> dict:
     results = {"extracted": 0, "translated": 0, "published": 0, "errors": 0}
 
     from datetime import date
@@ -154,7 +249,8 @@ async def process_pipeline(limit: int = 5):
     daily_cost = await models.get_daily_cost(today)
 
     if daily_cost >= settings.daily_budget_usd:
-        return {"error": "daily_budget_exceeded", "spent": daily_cost}
+        logger.warning("budget_exceeded", spent=daily_cost, budget=settings.daily_budget_usd)
+        return results
 
     to_extract = await models.get_articles_by_state("fetched", limit)
     for art in to_extract:
@@ -180,13 +276,14 @@ async def process_pipeline(limit: int = 5):
         else:
             results["errors"] += 1
 
-    logger.info("pipeline_cycle", **results)
+    if any(v > 0 for v in results.values()):
+        logger.info("pipeline_cycle", **results)
     return results
 
 
 async def _upsert_feed(url: str, title: str) -> int:
     async with aiosqlite.connect(models.DB_PATH) as db:
-        cursor = await db.execute(
+        await db.execute(
             "INSERT OR IGNORE INTO feeds (url, title) VALUES (?, ?)", (url, title)
         )
         await db.commit()

@@ -176,3 +176,20 @@ async def get_daily_cost(date_str: str) -> float:
         )
         row = await cursor.fetchone()
         return row[0] if row else 0.0
+
+
+async def get_active_feeds() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM feeds WHERE active = 1")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def update_feed_fetched(feed_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE feeds SET last_fetched = ? WHERE id = ?",
+            (time.time(), feed_id),
+        )
+        await db.commit()
