@@ -54,6 +54,19 @@ CREATE TABLE IF NOT EXISTS daily_costs (
     total_input_tokens INTEGER DEFAULT 0,
     total_output_tokens INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS translation_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_hash TEXT UNIQUE NOT NULL,
+    source_text TEXT NOT NULL,
+    translated_text TEXT NOT NULL,
+    trans_model TEXT,
+    match_count INTEGER DEFAULT 1,
+    created_at REAL,
+    last_used_at REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tm_hash ON translation_memory(source_hash);
 """
 
 VALID_STATES = {
@@ -193,3 +206,41 @@ async def update_feed_fetched(feed_id: int):
             (time.time(), feed_id),
         )
         await db.commit()
+
+
+async def tm_lookup(source_hash: str) -> Optional[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM translation_memory WHERE source_hash = ?",
+            (source_hash,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def tm_store(source_hash: str, source_text: str, translated_text: str, model: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT OR IGNORE INTO translation_memory
+               (source_hash, source_text, translated_text, trans_model, created_at, last_used_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (source_hash, source_text[:500], translated_text, model, time.time(), time.time()),
+        )
+        await db.commit()
+
+
+async def tm_increment_match(source_hash: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE translation_memory SET match_count = match_count + 1, last_used_at = ? WHERE source_hash = ?",
+            (time.time(), source_hash),
+        )
+        await db.commit()
+
+
+async def tm_stats() -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT COUNT(*) as total, COALESCE(SUM(match_count), 0) as matches FROM translation_memory")
+        row = await cursor.fetchone()
+        return {"total_entries": row[0], "total_matches": row[1]}

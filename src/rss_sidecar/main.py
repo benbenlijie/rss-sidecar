@@ -89,6 +89,7 @@ async def health():
     from datetime import date
     today = date.today().isoformat()
     daily_cost = await models.get_daily_cost(today)
+    tm = await models.tm_stats()
     return {
         "status": "ok",
         "daily_cost_usd": round(daily_cost, 4),
@@ -96,6 +97,8 @@ async def health():
         "budget_used_pct": round(daily_cost / settings.daily_budget_usd * 100, 1) if settings.daily_budget_usd else 0,
         "freshrss_connected": _freshrss is not None and _freshrss._auth_token is not None,
         "scheduler_running": _scheduler is not None and _scheduler.running,
+        "tm_entries": tm["total_entries"],
+        "tm_matches": tm["total_matches"],
     }
 
 

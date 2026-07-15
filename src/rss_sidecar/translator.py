@@ -7,6 +7,7 @@ import json
 import structlog
 
 from .config import settings
+from . import memory
 
 logger = structlog.get_logger()
 
@@ -147,6 +148,47 @@ async def _translate_chunk_with_retry(
     return chunk, 0, 0
 
 
+async def _process_chunk(
+    client: AsyncOpenAI, model: str, chunk: str, target_lang: str, chunk_idx: int
+) -> tuple[str, int, int]:
+    paragraphs = [p.strip() for p in chunk.split("\n\n") if p.strip()]
+
+    tm_hits = await memory.lookup_batch(paragraphs)
+
+    miss_indices = [i for i in range(len(paragraphs)) if i not in tm_hits]
+
+    if not miss_indices:
+        logger.info("tm_full_hit", chunk=chunk_idx, paras=len(paragraphs))
+        result_paras = [tm_hits[i] for i in range(len(paragraphs))]
+        return "\n\n".join(result_paras), 0, 0
+
+    miss_text = "\n\n".join(paragraphs[i] for i in miss_indices)
+    translated, in_tok, out_tok = await _translate_chunk_with_retry(
+        client, model, miss_text, target_lang, chunk_idx
+    )
+
+    trans_paras = [p.strip() for p in translated.split("\n\n") if p.strip()]
+
+    for j, idx in enumerate(miss_indices):
+        if j < len(trans_paras):
+            await memory.store(paragraphs[idx], trans_paras[j], model)
+
+    result_paras = [""] * len(paragraphs)
+    for i, trans in tm_hits.items():
+        result_paras[i] = trans
+    for j, idx in enumerate(miss_indices):
+        if j < len(trans_paras):
+            result_paras[idx] = trans_paras[j]
+        else:
+            result_paras[idx] = paragraphs[idx]
+
+    if tm_hits:
+        logger.info("tm_partial_hit", chunk=chunk_idx,
+                     hit=len(tm_hits), miss=len(miss_indices))
+
+    return "\n\n".join(result_paras), in_tok, out_tok
+
+
 async def translate(text: str, target_lang: str = None) -> Optional[TranslationResult]:
     if not settings.openai_api_key:
         logger.error("no_api_key")
@@ -163,7 +205,7 @@ async def translate(text: str, target_lang: str = None) -> Optional[TranslationR
     chunks = _chunk_paragraphs(text)
     logger.info("translate_start", model=model, chunks=len(chunks), chars=len(text))
 
-    tasks = [_translate_chunk_with_retry(client, model, chunk, target_lang, i)
+    tasks = [_process_chunk(client, model, chunk, target_lang, i)
              for i, chunk in enumerate(chunks)]
     results = await asyncio.gather(*tasks)
 
