@@ -6,10 +6,10 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
+      - ./glossary.yaml:/app/glossary.yaml
     restart: unless-stopped
-    depends_on: []
 
-  # Optional: run alongside FreshRSS
+  # Uncomment to run alongside FreshRSS:
   # freshrss:
   #   image: freshrss/freshrss:latest
   #   ports:
