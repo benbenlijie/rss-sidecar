@@ -118,7 +118,15 @@ async def create_article(feed_id: int, url: str, guid: str = "", title: str = ""
             (feed_id, url, guid, title, time.time()),
         )
         await db.commit()
-        return cursor.lastrowid
+
+        if cursor.lastrowid and cursor.lastrowid > 0:
+            return cursor.lastrowid
+
+        cursor = await db.execute(
+            "SELECT id FROM articles WHERE original_url = ?", (url,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else 0
 
 
 async def update_article_state(article_id: int, state: str, **fields):
