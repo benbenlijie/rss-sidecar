@@ -169,6 +169,32 @@ def find_related_articles(G: nx.Graph, target_article_id: int, limit: int = 3) -
     return results
 
 
+def find_surprising_connections(G: nx.Graph, target_article_id: int, limit: int = 2) -> list[dict]:
+    related = find_related_articles(G, target_article_id, limit=10)
+    if not related:
+        return []
+
+    entity_rarity = {}
+    for node_id, data in G.nodes(data=True):
+        label = data.get("label", node_id)
+        article_count = len(data.get("articles", set()))
+        entity_rarity[label] = article_count
+
+    surprising = []
+    for r in related:
+        rare = [e for e in r["shared_concepts"] if entity_rarity.get(e, 99) <= 2]
+        if rare:
+            surprise_score = len(rare) / max(len(r["shared_concepts"]), 1)
+            surprising.append({
+                **r,
+                "rare_concepts": rare,
+                "surprise_score": round(surprise_score, 2),
+            })
+
+    surprising.sort(key=lambda x: -x["surprise_score"])
+    return surprising[:limit]
+
+
 def save_graph(G: nx.Graph):
     GRAPH_PATH.parent.mkdir(parents=True, exist_ok=True)
     serializable = nx.node_link_data(G, edges="links")

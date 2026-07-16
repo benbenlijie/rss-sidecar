@@ -276,3 +276,25 @@ async def get_published_articles_for_graph() -> list[dict]:
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+
+async def get_article_state_counts() -> dict[str, int]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT state, COUNT(*) as cnt FROM articles GROUP BY state"
+        )
+        rows = await cursor.fetchall()
+        return {row[0]: row[1] for row in rows}
+
+
+async def get_cost_history(days: int = 7) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT date, articles_processed, articles_failed,
+                      total_cost_usd, total_input_tokens, total_output_tokens
+               FROM daily_costs ORDER BY date DESC LIMIT ?""",
+            (days,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
