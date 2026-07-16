@@ -18,7 +18,7 @@ GRAPH_PATH = Path("data/knowledge_graph.json")
 EXTRACTION_PROMPT = """Extract key entities and relationships from this article.
 Return ONLY valid JSON. No markdown fences. No explanation.
 
-{"nodes": [{"id": "anthropic", "label": "Anthropic", "type": "company"}], "edges": [{"source": "anthropic", "target": "claude", "relation": "develops"}]}
+{{"nodes": [{{"id": "anthropic", "label": "Anthropic", "type": "company"}}], "edges": [{{"source": "anthropic", "target": "claude", "relation": "develops"}}]}}
 
 Rules:
 - IDs: lowercase snake_case (openai, gpt_4, rlhf, constitutional_ai)
