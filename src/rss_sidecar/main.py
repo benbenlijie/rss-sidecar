@@ -18,6 +18,7 @@ from .extractor import extract_full_content
 from .translator import translate
 from .rss_output import generate_stable_feed, generate_bilingual_feed
 from .freshrss_client import FreshRSSClient
+from . import graph_builder
 
 structlog.configure(processors=[
     structlog.processors.TimeStamper(fmt="iso"),
@@ -63,6 +64,12 @@ async def startup():
         scheduled_process,
         IntervalTrigger(seconds=PROCESS_INTERVAL_SECONDS),
         id="process",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        scheduled_graph_rebuild,
+        IntervalTrigger(seconds=3600),
+        id="graph_rebuild",
         replace_existing=True,
     )
     _scheduler.start()
@@ -119,6 +126,23 @@ async def scheduler_status():
         "running": _scheduler.running,
         "jobs": jobs,
         "active_feeds": len(feeds),
+    }
+
+
+@app.get("/graph/status")
+async def graph_status():
+    G = graph_builder.load_graph()
+    if not G:
+        return {"enabled": True, "nodes": 0, "edges": 0, "multi_article": 0}
+
+    multi = sum(1 for _, d in G.nodes(data=True) if len(d.get("articles", set())) > 1)
+    with_entities = await models.get_articles_with_entities()
+    return {
+        "enabled": True,
+        "nodes": G.number_of_nodes(),
+        "edges": G.number_of_edges(),
+        "multi_article_entities": multi,
+        "articles_with_entities": len(with_entities),
     }
 
 
@@ -198,16 +222,29 @@ async def read_article(article_id: int):
     orig_paras = [p.strip() for p in orig.split("\n\n") if p.strip()]
     trans_paras = [p.strip() for p in trans.split("\n\n") if p.strip()]
 
+    connections = []
+    G = graph_builder.load_graph()
+    if G:
+        related = graph_builder.find_related_articles(G, article_id, limit=3)
+        for r in related:
+            related_art = await models.get_article(r["article_id"])
+            if related_art:
+                connections.append({
+                    "id": r["article_id"],
+                    "title": related_art.get("title_trans") or related_art.get("title_orig", ""),
+                    "shared": ", ".join(r["shared_concepts"][:4]),
+                })
+
     from jinja2 import Template
     template = Template(ARTICLE_TEMPLATE)
     return template.render(
         title=art.get("title_trans") or art.get("title_orig") or "Untitled",
         orig_title=art.get("title_orig") or "",
-        blocks=zip(orig_paras, trans_paras),
         max_blocks=max(len(orig_paras), len(trans_paras)),
         orig_paras=orig_paras,
         trans_paras=trans_paras,
         source_url=art.get("original_url") or "",
+        connections=connections,
     )
 
 
@@ -244,6 +281,10 @@ async def scheduled_process():
     await run_pipeline(limit=5)
 
 
+async def scheduled_graph_rebuild():
+    await graph_builder.rebuild_graph()
+
+
 async def run_pipeline(limit: int = 5) -> dict:
     results = {"extracted": 0, "translated": 0, "published": 0, "errors": 0}
 
@@ -276,6 +317,13 @@ async def run_pipeline(limit: int = 5) -> dict:
         success = await _do_publish(art)
         if success:
             results["published"] += 1
+            content = art.get("content_orig") or ""
+            if content and len(content) > 100:
+                await graph_builder.extract_entities(
+                    art["id"],
+                    art.get("title_orig", ""),
+                    content,
+                )
         else:
             results["errors"] += 1
 
@@ -412,6 +460,16 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     font-size: 0.85em;
   }
   body.hide-original .original { display: none; }
+  .connections {
+    margin-top: 3em; padding: 1.2em;
+    background: #f0f0f0; border-radius: 8px;
+  }
+  .connections h3 { font-size: 1em; margin: 0 0 0.8em; color: #555; }
+  .connections ul { list-style: none; padding: 0; margin: 0; }
+  .connections li { margin-bottom: 0.6em; }
+  .connections a { color: #0066cc; text-decoration: none; }
+  .connections a:hover { text-decoration: underline; }
+  .connections small { color: #999; display: block; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -424,5 +482,18 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   {% if i < trans_paras|length %}<div class="translated">{{ trans_paras[i] }}</div>{% endif %}
 </div>
 {% endfor %}
+{% if connections %}
+<div class="connections">
+  <h3>📎 你读过的相关文章</h3>
+  <ul>
+    {% for c in connections %}
+    <li>
+      <a href="/article/{{ c.id }}">{{ c.title }}</a>
+      <small>共同概念: {{ c.shared }}</small>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 </body>
 </html>"""

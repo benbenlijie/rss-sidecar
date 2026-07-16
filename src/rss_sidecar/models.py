@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS articles (
     output_tokens INTEGER DEFAULT 0,
     cost_usd REAL DEFAULT 0,
 
+    entities_json TEXT,
+    graph_updated_at REAL,
+
     fetched_at REAL,
     translated_at REAL,
     published_at REAL,
@@ -131,6 +134,7 @@ async def update_article_state(article_id: int, state: str, **fields):
             "content_version", "trans_engine", "trans_model",
             "input_tokens", "output_tokens", "cost_usd",
             "translated_at", "published_at", "retry_count",
+            "entities_json", "graph_updated_at",
         }:
             sets.append(f"{key} = ?")
             params.append(value)
@@ -244,3 +248,23 @@ async def tm_stats() -> dict:
         cursor = await db.execute("SELECT COUNT(*) as total, COALESCE(SUM(match_count), 0) as matches FROM translation_memory")
         row = await cursor.fetchone()
         return {"total_entries": row[0], "total_matches": row[1]}
+
+
+async def get_articles_with_entities() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id, title_orig, title_trans, original_url, entities_json FROM articles WHERE state = 'published' AND entities_json IS NOT NULL"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_published_articles_for_graph() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id, title_orig, title_trans, original_url, content_orig FROM articles WHERE state = 'published'"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
