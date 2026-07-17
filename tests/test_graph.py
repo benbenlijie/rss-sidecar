@@ -145,3 +145,63 @@ class TestGraphPersistence:
         from rss_sidecar import graph_builder
         monkeypatch.setattr(graph_builder, "GRAPH_PATH", tmp_path / "nonexistent.json")
         assert load_graph() is None
+
+
+class TestSurprisingConnections:
+
+    def _build_graph_with_rarity(self):
+        extractions = [
+            _make_extraction(1, "Claude", {
+                "nodes": [
+                    {"id": "ai_safety", "label": "AI Safety"},
+                    {"id": "claude", "label": "Claude"},
+                    {"id": "quantum", "label": "Quantum Computing"},
+                ],
+                "edges": [],
+            }),
+            _make_extraction(2, "GPT-4", {
+                "nodes": [
+                    {"id": "ai_safety", "label": "AI Safety"},
+                    {"id": "gpt4", "label": "GPT-4"},
+                ],
+                "edges": [],
+            }),
+            _make_extraction(3, "Gemini", {
+                "nodes": [
+                    {"id": "ai_safety", "label": "AI Safety"},
+                    {"id": "quantum", "label": "Quantum Computing"},
+                ],
+                "edges": [],
+            }),
+            _make_extraction(4, "Unrelated", {
+                "nodes": [
+                    {"id": "cooking", "label": "Cooking"},
+                ],
+                "edges": [],
+            }),
+        ]
+        return build_graph(extractions)
+
+    def test_finds_rare_shared_entity(self):
+        from rss_sidecar.graph_builder import find_surprising_connections
+        G = self._build_graph_with_rarity()
+        surprising = find_surprising_connections(G, 1, limit=2)
+
+        ids = [s["article_id"] for s in surprising]
+        assert 3 in ids
+        quantum_conn = [s for s in surprising if s["article_id"] == 3][0]
+        assert "Quantum Computing" in quantum_conn["rare_concepts"]
+
+    def test_common_entity_not_surprising(self):
+        from rss_sidecar.graph_builder import find_surprising_connections
+        G = self._build_graph_with_rarity()
+        surprising = find_surprising_connections(G, 1, limit=5)
+
+        for s in surprising:
+            assert "AI Safety" not in s.get("rare_concepts", [])
+
+    def test_no_related_returns_empty(self):
+        from rss_sidecar.graph_builder import find_surprising_connections
+        G = self._build_graph_with_rarity()
+        result = find_surprising_connections(G, 4)
+        assert result == []

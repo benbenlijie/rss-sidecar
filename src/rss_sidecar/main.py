@@ -10,6 +10,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse
+from jinja2 import Environment, FileSystemLoader
+import os
 
 from .config import settings
 from . import models
@@ -27,6 +29,9 @@ structlog.configure(processors=[
 ])
 
 logger = structlog.get_logger()
+
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+_jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), autoescape=False)
 
 app = FastAPI(title="RSS Sidecar", version="0.1.0")
 _freshrss: Optional[FreshRSSClient] = None
@@ -162,8 +167,7 @@ async def dashboard():
 
     feeds = await models.get_active_feeds()
 
-    from jinja2 import Template
-    template = Template(DASHBOARD_TEMPLATE)
+    template = _jinja_env.get_template("dashboard.html")
     return template.render(
         state_counts=state_counts,
         total_articles=sum(state_counts.values()),
@@ -298,8 +302,7 @@ async def read_article(article_id: int):
                     "score": s["surprise_score"],
                 })
 
-    from jinja2 import Template
-    template = Template(ARTICLE_TEMPLATE)
+    template = _jinja_env.get_template("article.html")
     return template.render(
         title=art.get("title_trans") or art.get("title_orig") or "Untitled",
         orig_title=art.get("title_orig") or "",
@@ -487,182 +490,3 @@ async def _do_publish(art: dict) -> bool:
         )
 
     return True
-
-
-ARTICLE_TEMPLATE = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ title }}</title>
-<style>
-  body {
-    font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
-    max-width: 720px;
-    margin: 2rem auto;
-    padding: 0 1rem;
-    line-height: 1.8;
-    color: #1a1a1a;
-    background: #fafafa;
-  }
-  h1 { font-size: 1.5em; line-height: 1.3; margin-bottom: 0.5em; }
-  .source { color: #888; font-size: 0.85em; margin-bottom: 2em; }
-  .source a { color: #666; }
-  .bilingual-block { margin-bottom: 1.5em; }
-  .original {
-    color: #999;
-    font-size: 0.9em;
-    opacity: 0.4;
-    transition: opacity 0.2s;
-    margin-bottom: 0.5em;
-  }
-  .original:hover { opacity: 1; }
-  .translated { font-size: 1.05em; color: #1a1a1a; }
-  .toggle {
-    position: fixed; top: 1rem; right: 1rem;
-    background: #333; color: #fff; border: none;
-    padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;
-    font-size: 0.85em;
-  }
-  body.hide-original .original { display: none; }
-  .connections {
-    margin-top: 3em; padding: 1.2em;
-    background: #f0f0f0; border-radius: 8px;
-  }
-  .connections h3 { font-size: 1em; margin: 0 0 0.8em; color: #555; }
-  .connections ul { list-style: none; padding: 0; margin: 0; }
-  .connections li { margin-bottom: 0.6em; }
-  .connections a { color: #0066cc; text-decoration: none; }
-  .connections a:hover { text-decoration: underline; }
-  .connections small { color: #999; display: block; margin-top: 2px; }
-</style>
-</head>
-<body>
-<button class="toggle" onclick="document.body.classList.toggle('hide-original')">原文</button>
-<h1>{{ title }}</h1>
-<div class="source">Source: <a href="{{ source_url }}">{{ source_url }}</a></div>
-{% for i in range(max_blocks) %}
-<div class="bilingual-block">
-  {% if i < orig_paras|length %}<div class="original">{{ orig_paras[i] }}</div>{% endif %}
-  {% if i < trans_paras|length %}<div class="translated">{{ trans_paras[i] }}</div>{% endif %}
-</div>
-{% endfor %}
-{% if connections %}
-<div class="connections">
-  <h3>📎 你读过的相关文章</h3>
-  <ul>
-    {% for c in connections %}
-    <li>
-      <a href="/article/{{ c.id }}">{{ c.title }}</a>
-      <small>共同概念: {{ c.shared }}</small>
-    </li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
-{% if surprises %}
-<div class="connections" style="background:#fff3cd;">
-  <h3>💡 意外关联</h3>
-  <ul>
-    {% for s in surprises %}
-    <li>
-      <a href="/article/{{ s.id }}">{{ s.title }}</a>
-      <small>稀有共同点: {{ s.concepts }}（惊喜度 {{ s.score }}）</small>
-    </li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
-</body>
-</html>"""
-
-
-DASHBOARD_TEMPLATE = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RSS Sidecar Dashboard</title>
-<style>
-  body { font-family: monospace; max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #1a1a2e; color: #e0e0e0; }
-  h1 { color: #00d4ff; border-bottom: 1px solid #333; padding-bottom: 0.5em; }
-  h2 { color: #00d4ff; margin-top: 2em; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; }
-  .card { background: #16213e; border-radius: 8px; padding: 1em 1.2em; }
-  .card .num { font-size: 2em; font-weight: bold; color: #00d4ff; }
-  .card .label { color: #888; font-size: 0.85em; }
-  .states { display: flex; gap: 0.5em; flex-wrap: wrap; }
-  .state { padding: 0.3em 0.8em; border-radius: 4px; font-size: 0.85em; }
-  .state-published { background: #0d3b0d; color: #4ade80; }
-  .state-translated { background: #1a3b5c; color: #60a5fa; }
-  .state-fetched { background: #3b3b0d; color: #fbbf24; }
-  .state-err { background: #3b0d0d; color: #f87171; }
-  table { width: 100%; border-collapse: collapse; margin-top: 0.5em; }
-  th, td { text-align: left; padding: 0.4em 0.8em; border-bottom: 1px solid #333; }
-  th { color: #888; font-size: 0.85em; }
-  a { color: #00d4ff; }
-  .footer { margin-top: 2em; color: #555; font-size: 0.8em; }
-</style>
-</head>
-<body>
-<h1>RSS Sidecar Dashboard</h1>
-
-<div class="grid">
-  <div class="card">
-    <div class="num">{{ total_articles }}</div>
-    <div class="label">Total Articles</div>
-  </div>
-  <div class="card">
-    <div class="num">{{ active_feeds }}</div>
-    <div class="label">Active Feeds</div>
-  </div>
-  <div class="card">
-    <div class="num">${{ daily_cost }}</div>
-    <div class="label">Today's Cost / ${{ daily_budget }} budget</div>
-  </div>
-  <div class="card">
-    <div class="num">{{ tm_entries }}</div>
-    <div class="label">TM Entries ({{ tm_matches }} matches)</div>
-  </div>
-  <div class="card">
-    <div class="num">{{ graph_nodes }}</div>
-    <div class="label">Graph Nodes ({{ graph_edges }} edges, {{ graph_multi }} multi)</div>
-  </div>
-  <div class="card">
-    <div class="num">{{ "RUNNING" if scheduler_running else "STOPPED" }}</div>
-    <div class="label">Scheduler</div>
-  </div>
-</div>
-
-<h2>Article States</h2>
-<div class="states">
-  {% for state, count in state_counts.items() %}
-  <span class="state {% if 'err' in state %}state-err{% elif state == 'published' %}state-published{% elif state == 'translated' %}state-translated{% else %}state-fetched{% endif %}">
-    {{ state }}: {{ count }}
-  </span>
-  {% endfor %}
-</div>
-
-<h2>Cost History (7 days)</h2>
-<table>
-  <tr><th>Date</th><th>Processed</th><th>Failed</th><th>Cost</th><th>Tokens (in/out)</th></tr>
-  {% for c in cost_history %}
-  <tr>
-    <td>{{ c.date }}</td>
-    <td>{{ c.articles_processed }}</td>
-    <td>{{ c.articles_failed }}</td>
-    <td>${{ "%.4f"|format(c.total_cost_usd) }}</td>
-    <td>{{ c.total_input_tokens }} / {{ c.total_output_tokens }}</td>
-  </tr>
-  {% endfor %}
-</table>
-
-<div class="footer">
-  Model: {{ model }} | Target: {{ target_language }} |
-  <a href="/health">/health</a> |
-  <a href="/scheduler/status">/scheduler/status</a> |
-  <a href="/graph/status">/graph/status</a> |
-  <a href="/docs">/docs</a>
-</div>
-</body>
-</html>"""

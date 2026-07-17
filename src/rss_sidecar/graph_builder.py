@@ -1,6 +1,10 @@
 import json
 import re
 import asyncio
+import fcntl
+import tempfile
+import shutil
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -214,7 +218,17 @@ def save_graph(G: nx.Graph):
     for node in serializable.get("nodes", []):
         if "articles" in node:
             node["articles"] = list(node["articles"])
-    GRAPH_PATH.write_text(json.dumps(serializable, ensure_ascii=False, indent=2))
+
+    lock_path = str(GRAPH_PATH) + ".lock"
+    with open(lock_path, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=str(GRAPH_PATH.parent), suffix=".tmp", delete=False
+        ) as tmp:
+            json.dump(serializable, tmp, ensure_ascii=False)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        shutil.move(tmp.name, str(GRAPH_PATH))
 
 
 def load_graph() -> Optional[nx.Graph]:
