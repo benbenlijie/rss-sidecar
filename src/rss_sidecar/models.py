@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS articles (
     cost_usd REAL DEFAULT 0,
 
     entities_json TEXT,
+    embedding_json TEXT,
     graph_updated_at REAL,
 
     fetched_at REAL,
@@ -142,7 +143,7 @@ async def update_article_state(article_id: int, state: str, **fields):
             "content_version", "trans_engine", "trans_model",
             "input_tokens", "output_tokens", "cost_usd",
             "translated_at", "published_at", "retry_count",
-            "entities_json", "graph_updated_at",
+            "entities_json", "graph_updated_at", "embedding_json",
         }:
             sets.append(f"{key} = ?")
             params.append(value)

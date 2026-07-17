@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     miniflux_url: str = ""
     miniflux_api_key: str = ""
 
+    embedding_api_key: str = ""
+    embedding_base_url: str = ""
+    embedding_model: str = "text-embedding-3-small"
+
     daily_budget_usd: float = 1.0
     max_articles_per_day: int = 100
     max_retries: int = 2
@@ -43,6 +47,10 @@ class Settings(BaseSettings):
     @property
     def backend_enabled(self) -> bool:
         return self.freshrss_enabled or self.miniflux_enabled
+
+    @property
+    def embedding_enabled(self) -> bool:
+        return bool(self.embedding_api_key)
 
 
 settings = Settings()

@@ -22,6 +22,7 @@ from .rss_output import generate_stable_feed, generate_bilingual_feed
 from .freshrss_client import FreshRSSClient
 from .miniflux_client import MinifluxClient
 from . import graph_builder
+from . import embedding
 
 structlog.configure(processors=[
     structlog.processors.TimeStamper(fmt="iso"),
@@ -395,6 +396,14 @@ async def run_pipeline(limit: int = 5) -> dict:
                     art.get("title_orig", ""),
                     content,
                 )
+                if settings.embedding_enabled:
+                    emb = await embedding.generate_embedding(content)
+                    if emb:
+                        import json as _json
+                        await models.update_article_state(
+                            art["id"], "published",
+                            embedding_json=_json.dumps(emb),
+                        )
         else:
             results["errors"] += 1
 
