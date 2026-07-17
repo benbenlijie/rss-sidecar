@@ -26,7 +26,9 @@ Translate foreign RSS feeds into your language, with bilingual display and cross
 
 **Integration**
 - 🔌 FreshRSS Google Reader API (auto-discover subscriptions, write-back translated feeds)
+- 📡 Miniflux REST API support (same sidecar features, different backend)
 - 📡 Dual RSS output: stable feed (pure translation) + bilingual feed (versioned guids)
+- 🤖 MCP server for AI agent integration (search articles, query knowledge graph)
 - 🌐 Minimal web reading page with bilingual display + knowledge connections sidebar
 
 **Operations**
