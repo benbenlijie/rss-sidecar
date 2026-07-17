@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     freshrss_username: str = ""
     freshrss_api_password: str = ""
 
+    backend_type: str = ""
+    miniflux_url: str = ""
+    miniflux_api_key: str = ""
+
     daily_budget_usd: float = 1.0
     max_articles_per_day: int = 100
     max_retries: int = 2
@@ -31,6 +35,14 @@ class Settings(BaseSettings):
     @property
     def freshrss_enabled(self) -> bool:
         return bool(self.freshrss_url and self.freshrss_username and self.freshrss_api_password)
+
+    @property
+    def miniflux_enabled(self) -> bool:
+        return bool(self.miniflux_url and self.miniflux_api_key)
+
+    @property
+    def backend_enabled(self) -> bool:
+        return self.freshrss_enabled or self.miniflux_enabled
 
 
 settings = Settings()

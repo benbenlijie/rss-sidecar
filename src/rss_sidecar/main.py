@@ -20,6 +20,7 @@ from .extractor import extract_full_content
 from .translator import translate, translate_title
 from .rss_output import generate_stable_feed, generate_bilingual_feed
 from .freshrss_client import FreshRSSClient
+from .miniflux_client import MinifluxClient
 from . import graph_builder
 
 structlog.configure(processors=[
@@ -34,7 +35,7 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), autoescape=False)
 
 app = FastAPI(title="RSS Sidecar", version="0.1.0")
-_freshrss: Optional[FreshRSSClient] = None
+_backend = None
 _scheduler: Optional[AsyncIOScheduler] = None
 _lock_file = None
 
@@ -42,13 +43,16 @@ PROCESS_INTERVAL_SECONDS = 300
 
 @app.on_event("startup")
 async def startup():
-    global _freshrss, _scheduler, _lock_file
+    global _backend, _scheduler, _lock_file
 
     await models.init_db()
 
     if settings.freshrss_enabled:
-        _freshrss = FreshRSSClient()
-        await _freshrss.login()
+        _backend = FreshRSSClient()
+        await _backend.login()
+    elif settings.miniflux_enabled:
+        _backend = MinifluxClient()
+        await _backend.login()
 
     try:
         _lock_file = open("/tmp/rss_sidecar_scheduler.lock", "w")
@@ -79,7 +83,7 @@ async def startup():
     _scheduler.start()
     logger.info(
         "sidecar_started",
-        freshrss=settings.freshrss_enabled,
+        backend="freshrss" if settings.freshrss_enabled else "miniflux" if settings.miniflux_enabled else "standalone",
         fetch_interval=settings.fetch_interval_seconds,
         process_interval=PROCESS_INTERVAL_SECONDS,
     )
@@ -106,7 +110,7 @@ async def health():
         "daily_cost_usd": round(daily_cost, 4),
         "daily_budget_usd": settings.daily_budget_usd,
         "budget_used_pct": round(daily_cost / settings.daily_budget_usd * 100, 1) if settings.daily_budget_usd else 0,
-        "freshrss_connected": _freshrss is not None and _freshrss._auth_token is not None,
+        "backend_connected": _backend is not None,
         "scheduler_running": _scheduler is not None and _scheduler.running,
         "tm_entries": tm["total_entries"],
         "tm_matches": tm["total_matches"],
@@ -207,11 +211,11 @@ async def add_manual_feed(url: str, title: str = ""):
 @app.get("/feeds/discover")
 async def discover_freshrss_feeds():
     """Auto-discover subscriptions from FreshRSS."""
-    if not _freshrss:
-        return {"error": "FreshRSS not configured"}
+    if not _backend:
+        return {"error": "No RSS backend configured"}
 
-    await _freshrss.ensure_logged_in()
-    subs = await _freshrss.list_subscriptions()
+    await _backend.ensure_logged_in()
+    subs = await _backend.list_subscriptions()
 
     discovered = []
     for sub in subs:
@@ -482,9 +486,9 @@ async def _do_publish(art: dict) -> bool:
         published_at=time.time(),
     )
 
-    if _freshrss:
+    if _backend:
         feed_url = f"http://{settings.host}:{settings.port}/feed/stable/{art['feed_id']}.xml"
-        await _freshrss.add_subscription(
+        await _backend.add_subscription(
             feed_url,
             title=f"RSS Sidecar Feed {art['feed_id']}",
         )
