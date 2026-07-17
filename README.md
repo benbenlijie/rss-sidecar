@@ -1,8 +1,40 @@
 # RSS Sidecar
 
+[![CI](https://github.com/benbenlijie/rss-sidecar/actions/workflows/ci.yml/badge.svg)](https://github.com/benbenlijie/rss-sidecar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)](#)
+
 AI translation + knowledge graph sidecar for FreshRSS/Miniflux.
 
 Translate foreign RSS feeds into your language, with bilingual display and cross-article knowledge connections. Runs alongside your existing RSS backend — no need to switch readers.
+
+## Features
+
+**Translation**
+- 🌐 Full-text translation via any OpenAI-compatible API (GLM, OpenAI, DeepSeek, Ollama)
+- 📝 Paragraph-level bilingual reading (original + translation side by side)
+- 🔤 Customizable glossary for term-accurate translation (`glossary.yaml`)
+- ⚡ Parallel chunked translation for long articles
+- 🧠 Translation memory — repeated paragraphs cost zero, always consistent
+
+**Knowledge Graph**
+- 🔗 Cross-article connections via shared entity detection
+- 💡 Surprising connections — rare shared concepts between seemingly unrelated articles
+- 📊 Auto-rebuilt every hour, entity extraction via LLM
+- 🎯 "You read related articles" with shared concept labels
+
+**Integration**
+- 🔌 FreshRSS Google Reader API (auto-discover subscriptions, write-back translated feeds)
+- 📡 Dual RSS output: stable feed (pure translation) + bilingual feed (versioned guids)
+- 🌐 Minimal web reading page with bilingual display + knowledge connections sidebar
+
+**Operations**
+- ⏰ APScheduler: auto-fetch (30min), auto-process (5min), graph rebuild (1hr)
+- 💰 Daily cost budget enforcement with per-article token tracking
+- 📊 Dashboard at `/dashboard` — article states, cost history, TM stats, graph stats
+- 🔒 SSRF protection, graph.json atomic writes, state machine crash recovery
+- 🐳 Single-container Docker deployment
 
 ## Quick Start
 
