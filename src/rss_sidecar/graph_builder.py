@@ -1,4 +1,5 @@
 import json
+import re
 import asyncio
 from collections import defaultdict
 from pathlib import Path
@@ -53,7 +54,19 @@ async def extract_entities(article_id: int, title: str, content: str) -> Optiona
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
 
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group())
+                except json.JSONDecodeError:
+                    logger.warning("entity_json_parse_failed", article_id=article_id, raw_len=len(raw))
+                    return None
+            else:
+                logger.warning("entity_no_json_found", article_id=article_id)
+                return None
 
         if not isinstance(data, dict) or "nodes" not in data:
             logger.warning("entity_extraction_bad_format", article_id=article_id)

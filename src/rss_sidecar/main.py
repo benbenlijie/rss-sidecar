@@ -15,7 +15,7 @@ from .config import settings
 from . import models
 from .fetcher import fetch_feed
 from .extractor import extract_full_content
-from .translator import translate
+from .translator import translate, translate_title
 from .rss_output import generate_stable_feed, generate_bilingual_feed
 from .freshrss_client import FreshRSSClient
 from . import graph_builder
@@ -242,7 +242,22 @@ async def bilingual_feed_endpoint(feed_id: int):
         return Response(content="<rss></rss>", media_type="application/rss+xml")
     feed_url = f"http://{settings.host}:{settings.port}"
     feed_title = articles[0].get("feed_title", "RSS Sidecar")
-    rss_xml = generate_bilingual_feed(articles, feed_title, feed_url)
+
+    connections_map = {}
+    G = graph_builder.load_graph()
+    if G:
+        for art in articles:
+            related = graph_builder.find_related_articles(G, art["id"], limit=2)
+            if related:
+                connections_map[art["id"]] = [
+                    {
+                        "title": f"Article {r['article_id']}",
+                        "shared_concepts": r["shared_concepts"],
+                    }
+                    for r in related
+                ]
+
+    rss_xml = generate_bilingual_feed(articles, feed_title, feed_url, connections_map=connections_map)
     return Response(content=rss_xml, media_type="application/rss+xml")
 
 
@@ -440,7 +455,8 @@ async def _do_translate(art: dict, today: str) -> bool:
 
     await models.record_cost(today, result.cost_usd, result.input_tokens, result.output_tokens, success=True)
 
-    title_trans = result.text.split("\n\n")[0][:200] if result.text else art.get("title_orig")
+    title_orig = art.get("title_orig") or ""
+    title_trans = await translate_title(title_orig) or title_orig
 
     await models.update_article_state(
         art["id"], "translated",

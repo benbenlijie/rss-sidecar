@@ -69,6 +69,31 @@ def build_glossary_section() -> str:
     return "\n".join(lines)
 
 
+async def translate_title(title: str, target_lang: str = None) -> Optional[str]:
+    if not title or not settings.openai_api_key:
+        return None
+
+    target_lang = target_lang or settings.target_language
+    model = settings.openai_model
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
+
+    try:
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": f"Translate the user's text to {target_lang}. Output ONLY the translation. Keep product/company names in English."},
+                {"role": "user", "content": title},
+            ],
+            temperature=0.3,
+        )
+        result = response.choices[0].message.content.strip()
+        return result if result else title
+    except Exception as e:
+        logger.warning("title_translate_failed", error=str(e))
+        return None
+
+
 @dataclass
 class TranslationResult:
     text: str
@@ -140,9 +165,13 @@ async def _translate_chunk_with_retry(
         try:
             return await _translate_chunk(client, model, chunk, target_lang)
         except Exception as e:
-            logger.warning("translate_retry", chunk=chunk_idx, attempt=attempt, error=str(e))
+            error_str = str(e)
+            if "contentFilter" in error_str or "'code': '1301'" in error_str:
+                logger.warning("content_filter_skipped", chunk=chunk_idx)
+                return chunk, 0, 0
+            logger.warning("translate_retry", chunk=chunk_idx, attempt=attempt, error=error_str)
             if attempt == settings.max_retries:
-                logger.error("translate_chunk_failed", chunk=chunk_idx, error=str(e))
+                logger.error("translate_chunk_failed", chunk=chunk_idx, error=error_str)
                 return chunk, 0, 0
             await asyncio.sleep(2 ** attempt * 3)
     return chunk, 0, 0

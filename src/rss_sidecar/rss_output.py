@@ -37,7 +37,8 @@ def generate_stable_feed(articles: list[dict], feed_title: str, feed_url: str) -
     return fg.rss_str(pretty=True).decode()
 
 
-def generate_bilingual_feed(articles: list[dict], feed_title: str, feed_url: str) -> str:
+def generate_bilingual_feed(articles: list[dict], feed_title: str, feed_url: str,
+                            connections_map: dict = None) -> str:
     fg = _make_feed(f"{feed_title} (双语)", feed_url)
 
     for art in articles:
@@ -61,6 +62,10 @@ def generate_bilingual_feed(articles: list[dict], feed_title: str, feed_url: str
         trans_paras = [p.strip() for p in trans.split("\n\n") if p.strip()]
 
         bilingual_html = _render_bilingual_html(orig_paras, trans_paras)
+
+        if connections_map and art["id"] in connections_map:
+            bilingual_html += _render_connections_html(connections_map[art["id"]])
+
         fe.content(bilingual_html, type="CDATA")
 
     return fg.rss_str(pretty=True).decode()
@@ -82,3 +87,26 @@ def _render_bilingual_html(orig_paras: list[str], trans_paras: list[str]) -> str
         )
 
     return "\n".join(parts)
+
+
+def _render_connections_html(connections: list) -> str:
+    if not connections:
+        return ""
+
+    items = []
+    for c in connections:
+        title = c.get("title", "")
+        concepts = c.get("shared_concepts") or c.get("rare_concepts") or []
+        concept_str = ", ".join(concepts[:4]) if concepts else ""
+        items.append(
+            f'<li>{title}'
+            f'{"<br><small>" + concept_str + "</small>" if concept_str else ""}'
+            f"</li>"
+        )
+
+    return (
+        f'<div class="connections">'
+        f"<h3>📎 相关文章</h3>"
+        f'<ul>{"".join(items)}</ul>'
+        f"</div>"
+    )
