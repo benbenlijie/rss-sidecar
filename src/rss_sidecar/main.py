@@ -1,7 +1,10 @@
 import asyncio
 import fcntl
+import logging
 import time
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import aiosqlite
@@ -31,6 +34,15 @@ structlog.configure(processors=[
 ])
 
 logger = structlog.get_logger()
+
+Path("data").mkdir(parents=True, exist_ok=True)
+_file_handler = RotatingFileHandler(
+    "data/rss_sidecar.log",
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+)
+logging.getLogger().addHandler(_file_handler)
+logging.getLogger().setLevel(logging.INFO)
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), autoescape=False)
